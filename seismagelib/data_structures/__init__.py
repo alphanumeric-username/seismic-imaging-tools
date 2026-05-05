@@ -1,0 +1,1 @@
+from seismagelib.data_structures.ndarray_struct_intf import NDArrayStructIntf

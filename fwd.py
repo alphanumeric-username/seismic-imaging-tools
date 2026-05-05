@@ -24,16 +24,10 @@ def main(argv):
     nx = modelparams['shape'][0]
     dx = modelparams['spacing'][0]
     nsrc = geoparams['ns']
-    nrec = geoparams['nr']
 
     dt = modelparams['dt']
     tn = geoparams['tn']
     f0 = geoparams['f0']
-
-    # ns_local = local_split((nsrc,), wcomm, Partition.SCATTER, 0)
-    # ns_alllocals = np.concatenate(wcomm.allgather(ns_local))
-    # isrc_min = np.concatenate([[0], np.cumsum(ns_alllocals)[:-1]])[wcomm.rank]
-    # isrc_max = np.cumsum(ns_alllocals)[wcomm.rank]
 
     max_jobs, shot_intervals = gen_shot_intervals(nsrc, wcomm.size)
     
@@ -45,15 +39,11 @@ def main(argv):
     isrc_min, isrc_max = shot_intervals[wcomm.rank]
 
     print(f'{log_handle()}: I will compute shots {isrc_min} to {isrc_max}')
-    # parameter_names = [ s.strip() for s in args.parameters.split(',') ]
 
     pdemodule = sio.import_module_file(args.pdefile)
     parameter_names = list(pdemodule.PARAMETERS)
 
-
     solver_cls = create_solver_class(pdemodule.forward, pdemodule.adjoint, parameter_names)
-
-
 
     def_src_x = np.linspace(0, (nx - 1)*dx, num=nx, dtype=np.float32)
     def_src_z = np.zeros(nx)
@@ -84,10 +74,13 @@ def main(argv):
         ], dtype=np.float32)
     }
 
-    # Aop = resolve_operator_class(args.solver)(**op_args)
     Aop = GenericAcousticWave2D(**op_args)
+    
+    src_wavelet = None
     if type(geoparams['source']) == np.ndarray:
         Aop.updatesrc(geoparams['source'])
+    else:
+        src_wavelet = Aop.geometry.src.wavelet
     
     dobs_local = Aop @ op_args['params']
     
@@ -101,6 +94,9 @@ def main(argv):
         dobs = alldobs.reshape((nsrc, *dobs_local[0].shape))
 
         dobs.tofile(os.path.join(args.outdir, args.name + '.bin'))
+        if not(src_wavelet is None):
+            src_wavelet.tofile(os.path.join(args.outdir, args.name + '-src.bin'))
+
         geopath = os.path.relpath(args.geometryfile, args.outdir)
         with open(os.path.join(args.outdir, args.name + '.yml'), 'w+') as fout:
             yaml.dump({
@@ -208,7 +204,6 @@ def parse_args(argv):
     parser.add_argument('--name',         '-n', type=str, required=True)
     parser.add_argument('--geometryfile', '-g', type=str, required=True)
     parser.add_argument('--pdefile',      '-e', type=str, required=True)
-    # parser.add_argument('--parameters',   '-p', type=str, required=True)
 
     return parser.parse_args(argv)
 

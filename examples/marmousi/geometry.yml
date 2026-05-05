@@ -9,5 +9,3 @@ src:
 rec:
   x: [ 0, 11500 ]
   z: 0
-solver: density
-parameters: ['m', 'rho']

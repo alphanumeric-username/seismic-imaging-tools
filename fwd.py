@@ -10,8 +10,6 @@ from seismagelib.waveeq_processing.generic_acoustic_twoway import GenericAcousti
 
 import time, datetime
 
-# from pylops_mpi.DistributedArray import local_split, Partition
-
 RANK_MASTER = 0
 
 def main(argv):

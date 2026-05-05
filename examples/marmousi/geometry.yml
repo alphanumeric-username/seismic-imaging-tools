@@ -1,0 +1,13 @@
+t0: 0
+tn: 4100
+ns: 100
+nr: 575
+f0: 15
+src:
+  x: [ 0, 11500 ]
+  z: 0
+rec:
+  x: [ 0, 11500 ]
+  z: 0
+solver: density
+parameters: ['m', 'rho']

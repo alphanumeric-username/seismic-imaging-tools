@@ -1,0 +1,12 @@
+dt: 1
+params:
+  b: ./true-b.bin
+  vp: ./true-vp.bin
+shape: [ 1151, 351 ]  # grid points
+spacing: [ 10.0, 10.0 ]  # meters
+# - 10.0
+# - 10.0
+nbl: 40
+origin: [ 0.0, 0.0 ]
+# - 0.0
+# - 0.0

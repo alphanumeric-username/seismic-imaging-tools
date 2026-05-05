@@ -61,12 +61,12 @@ def create_solver_class(forward_pde, ajoint_pde, parameters):
 
             model = model or self.model
             # Pick vp from model unless explicitly provided
-            kwargs.update(model.physical_params(**kwargs))
-            kwargs2 = {}
-            for k, v in kwargs.items():
+            pp = model.physical_params(**kwargs)
+            pp2 = {}
+            for k, v in pp.items():
                 if k == 'damp' or k in parameters:
-                    kwargs2[k] = v
-            kwargs = kwargs2
+                    pp2[k] = v
+            kwargs.update(pp2)
 
             summary = self.op_fwd(save).apply(
                 src = src, rec = rec, u = u, dt = kwargs.pop('dt', self.dt), **kwargs
@@ -109,12 +109,12 @@ def create_solver_class(forward_pde, ajoint_pde, parameters):
 
             model = model or self.model
             # Pick vp from model unless explicitly provided
-            kwargs.update(model.physical_params(**kwargs))
-            kwargs2 = {}
-            for k, v in kwargs.items():
+            pp = model.physical_params(**kwargs)
+            pp2 = {}
+            for k, v in pp.items():
                 if k == 'damp' or k in parameters:
-                    kwargs2[k] = v
-            kwargs = kwargs2
+                    pp2[k] = v
+            kwargs.update(pp2)
 
             # Execute operator and return wavefield and receiver data
             summary = self.op_adj(save).apply(srca=srca, rec=rec, v=v,

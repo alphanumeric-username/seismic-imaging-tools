@@ -1,11 +1,11 @@
-t0: 0
-tn: 4100
-ns: 100
-nr: 575
-f0: 15
+t0: 0  # Initial time of acquisition -- ms
+tn: 4100  # Final time of acquisition --ms
+ns: 100  # number of sources
+nr: 575  # number of receivers
+f0: 15  # Ricker Wavelet preak frequency -- Hz
 src:
-  x: [ 0, 11500 ]
-  z: 0
+  x: [ 0, 11500 ]  # Initial and final source offset -- meters
+  z: 0  # Depth of sources -- meters
 rec:
-  x: [ 0, 11500 ]
-  z: 0
+  x: [ 0, 11500 ]  # Initial and final receiver offset -- meters
+  z: 0  # Depth of receivers -- meters

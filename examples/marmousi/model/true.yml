@@ -1,12 +1,8 @@
-dt: 1
-params:
-  b: ./true-b.bin
-  vp: ./true-vp.bin
-shape: [ 1151, 351 ]  # grid points
-spacing: [ 10.0, 10.0 ]  # meters
-# - 10.0
-# - 10.0
-nbl: 40
-origin: [ 0.0, 0.0 ]
-# - 0.0
-# - 0.0
+dt: 1  # ms
+params:  # Paramters
+  b: ./true-b.bin  # Path to b data
+  vp: ./true-vp.bin  # Path to vp data
+shape: [ 1151, 351 ]  # Grid points
+spacing: [ 10.0, 10.0 ]  # Grid spacing -- meters
+nbl: 40  # Size of absorbing boundary -- grid points
+origin: [ 0.0, 0.0 ]  # Coordinate of top left point -- meters

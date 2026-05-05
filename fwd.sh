@@ -6,8 +6,6 @@ PDEFILE=solvers/acoustic_solver.py
 NAME=dobs_test
 OUTDIR=out/fwd
 
-# NTASKS=240
-# NTASKS_PER_NODE=60
 NTASKS=100
 NTASKS_PER_NODE=25
 

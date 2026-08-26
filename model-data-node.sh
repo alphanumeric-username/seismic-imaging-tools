@@ -6,7 +6,7 @@ module load openmpi/4.0.7-gcc-ucx-1.13.1
 source ~/.bashrc
 
 conda deactivate
-conda activate pylops
+conda activate seismage
 cd $CWD
 
-mpirun python fwd.py $@
+mpirun python model-data.py $@

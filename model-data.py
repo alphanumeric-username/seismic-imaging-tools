@@ -25,9 +25,9 @@ def main(argv):
     dx = modelparams['spacing'][0]
     nsrc = geoparams['ns']
 
-    dt = modelparams['dt']
+    dt = geoparams['dt']
     tn = geoparams['tn']
-    f0 = geoparams['f0']
+    fpeak = geoparams.get('fpeak', 10)
 
     max_jobs, shot_intervals = gen_shot_intervals(nsrc, wcomm.size)
     
@@ -61,12 +61,13 @@ def main(argv):
         'src_z': geoparams.get('src', {'z': def_src_z})['z'][isrc_min:isrc_max],
         'rec_x': geoparams.get('rec', {'x': def_rec_x})['x'],
         'rec_z': geoparams.get('rec', {'z': def_rec_z})['z'],
-        'src_type': geoparams['source'] if type(geoparams['source']) == str else 'Ricker',
+        'src_type': geoparams['wavelet'] if type(geoparams['wavelet']) == str else 'Ricker',
         't0': 0,
         'tn': tn,
         'dt': dt,
         'dtype': np.float32,
-        'f0': f0,
+        'f0': fpeak,
+        # 'src_type': None,
         'op_name': 'fwd',
         'parameter_names': parameter_names,
         'params': np.array([
@@ -77,8 +78,8 @@ def main(argv):
     Aop = GenericAcousticWave2D(**op_args)
     
     src_wavelet = None
-    if type(geoparams['source']) == np.ndarray:
-        Aop.updatesrc(geoparams['source'])
+    if type(geoparams['wavelet']) == np.ndarray:
+        Aop.updatesrc(geoparams['wavelet'])
     else:
         src_wavelet = Aop.geometry.src.wavelet
     
@@ -94,8 +95,8 @@ def main(argv):
         dobs = alldobs.reshape((nsrc, *dobs_local[0].shape))
 
         dobs.tofile(os.path.join(args.outdir, args.name + '.bin'))
-        if not(src_wavelet is None):
-            src_wavelet.tofile(os.path.join(args.outdir, args.name + '-src.bin'))
+        # if not(src_wavelet is None):
+        #     src_wavelet.tofile(os.path.join(args.outdir, args.name + '-src.bin'))
 
         geopath = os.path.relpath(args.geometryfile, args.outdir)
         with open(os.path.join(args.outdir, args.name + '.yml'), 'w+') as fout:
@@ -104,7 +105,7 @@ def main(argv):
                 'nt': dobs_local.shape[2],
                 'tn': tn,
                 'dt': dt,
-                'f0': f0,
+                # 'f0': fpeak,
                 'geometry': geopath,
                 'data': './' + args.name + '.bin'
             }, fout)
@@ -131,14 +132,13 @@ def log(str):
 def gen_shot_intervals(nshots: int, nworkers: int) -> List[Tuple[int, int]]:
     max_jobs = min(nworkers, nshots)
 
-    shots_per_job = int(np.ceil(nshots / max_jobs))
-    return max_jobs, [
-        (
-            i*shots_per_job, 
-            min((i+1)*shots_per_job, nshots)
-        ) 
-        for i in range(nworkers)
-    ]
+    intervals = []
+    indices = np.linspace(0, nshots, max_jobs+1, dtype=np.int32)
+    for i in range(1, max_jobs + 1):
+        intervals.append((int(indices[i-1]), int(indices[i])))
+
+    return max_jobs, intervals
+
 
 def gather_shots(wcomm: MPI.Intracomm, nsrc, isrc_min, isrc_max, dobs_local):
     n_processes_with_remaining_shots = np.array([0], dtype=np.int32)

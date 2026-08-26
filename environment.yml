@@ -1,0 +1,10 @@
+name: seismage
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - devito
+    - pylops
+    - PyYAML
+    - mpi4py
+    - pytest

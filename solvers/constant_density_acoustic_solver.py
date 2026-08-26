@@ -17,3 +17,14 @@ def adjoint(v, model, rec, dt):
     rec_expr = rec * dt**2 * vp**2 # Source injection term
 
     return pde, rec_expr
+
+
+def gradient(u, v, model):
+    vp = model.vp
+
+    grad_eqns = {
+        'vp': -u.dt * v.dt
+    }
+    # rec_expr = rec * dt**2 * vp**2 # Source injection term
+
+    return grad_eqns#, rec_expr

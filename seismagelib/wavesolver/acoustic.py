@@ -6,9 +6,9 @@ from examples.seismic import Model, AcquisitionGeometry
 from seismagelib.wavesolver.operators import create_operators
 
 
-def create_solver_class(forward_pde, ajoint_pde, parameters):
+def create_solver_class(forward_pde, ajoint_pde, parameters, gradient_pde=None):
 
-    ForwardOperator, AdjointOperator = create_operators(forward_pde, ajoint_pde)
+    ForwardOperator, AdjointOperator, GradientOperator = create_operators(forward_pde, ajoint_pde, parameters, gradient_pde)
 
     class _ParametricAcousticWaveSolver():
         def __init__(self, model: Model, geometry: AcquisitionGeometry, kernel='OT2', space_order=4, **kwargs):
@@ -47,6 +47,16 @@ def create_solver_class(forward_pde, ajoint_pde, parameters):
             return AdjointOperator(self.model, save=save, geometry=self.geometry,
                                 kernel=self.kernel, space_order=self.space_order,
                                 **self._kwargs)
+
+
+        @memoized_meth
+        def op_grad(self, save=True):
+            """Cached operator for gradient runs"""
+            return GradientOperator(self.model, save=save, geometry=self.geometry,
+                                    kernel=self.kernel, space_order=self.space_order,
+                                    **self._kwargs)
+
+        
 
         def forward(self, src=None, rec=None, u=None, model: Model =None, save=None, **kwargs):
             # Source term is read-only, so re-use the default
@@ -120,6 +130,50 @@ def create_solver_class(forward_pde, ajoint_pde, parameters):
             summary = self.op_adj(save).apply(srca=srca, rec=rec, v=v,
                                         dt=kwargs.pop('dt', self.dt), **kwargs)
             return srca, v, summary
-    
 
-    return _ParametricAcousticWaveSolver;
+
+        def gradient(self, rec, u, src=None, v=None, grads=None, model=None,
+                                checkpointing=False, **kwargs):
+            """
+            Gradient modelling function for computing the adjoint of the
+            Linearized Born modelling function, ie. the action of the
+            Jacobian adjoint on an input data.
+
+            Parameters
+            ----------
+            rec : SparseTimeFunction
+                Receiver data.
+            u : TimeFunction
+                Full wavefield `u` (created with save=True).
+            v : TimeFunction, optional
+                Stores the computed wavefield.
+            grad : Function, optional
+                Stores the gradient field.
+            model : Model, optional
+                Object containing the physical parameters.
+            vp : Function or float, optional
+                The time-constant velocity.
+
+            Returns
+            -------
+            Gradient field and performance summary.
+            """
+            dt = kwargs.pop('dt', self.dt)
+            # Gradient symbol
+            grads = grads or { pname: Function(name='grad' + str.capitalize(pname), grid=self.model.grid) for pname in parameters }
+
+            # Create the forward wavefield
+            v = v or TimeFunction(name='v', grid=self.model.grid,
+                                    time_order=2, space_order=self.space_order)
+
+            model = model or self.model
+            # Pick vp from model unless explicitly provided
+            kwargs.update(model.physical_params(**kwargs))
+
+            summary = self.op_grad().apply(rec=rec, v=v, u=u, dt=dt, **{ 
+                'grad' + str.capitalize(pname): grads[pname] for pname in parameters 
+            }, **kwargs)
+            return grads, summary
+
+
+    return _ParametricAcousticWaveSolver

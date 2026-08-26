@@ -78,11 +78,11 @@ def load_geometry(path):
             geospec['rec'][k] = np.linspace(v[0], v[1], num = nr, dtype=np.float32)
 
 
-    if geospec.get('source', 'wav://Ricker').startswith('wav://'):
-        geospec['source'] = geospec.get('source', 'wav://Ricker')[len('wav://'):]
+    if geospec.get('wavelet', 'wav://Ricker').startswith('wav://'):
+        geospec['wavelet'] = geospec.get('wavelet', 'wav://Ricker')[len('wav://'):]
     else:
-        srcpath = os.path.join(os.path.dirname(path), geospec['source'])
-        geospec['source'] = np.fromfile(srcpath, dtype=np.float32)
+        srcpath = os.path.join(os.path.dirname(path), geospec['wavelet'])
+        geospec['wavelet'] = np.fromfile(srcpath, dtype=np.float32)
     
     return geospec
 

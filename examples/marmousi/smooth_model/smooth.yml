@@ -1,0 +1,8 @@
+params:
+  rho: ./smooth-rho.bin
+  # b: ./smooth-b.bin
+  vp: ./smooth-vp.bin
+shape: [ 1151, 351 ]
+spacing: [ 10.0, 10.0 ]
+nbl: 80
+origin: [0, 0]

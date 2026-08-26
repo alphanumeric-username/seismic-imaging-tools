@@ -11,34 +11,23 @@ import numpy as np
 from pylops.utils import deps
 from pylops.utils.decorators import reshaped
 from pylops.utils.typing import DTypeLike, InputDimsLike, NDArray, SamplingLike
-from pylops.utils.twowaympi import MPIShotsController
-from pylops.waveeqprocessing.segy import ReadSEGY2D, count_segy_shots
 
 devito_message = deps.devito_import("the vector reflectivity twoway module")
 
 if devito_message is None:
     from devito import (
-        DiskSwapConfig,
-        Eq,
         Function,
-        Operator,
-        TensorTimeFunction,
-        VectorFunction,
-        VectorTimeFunction,
     )
     from devito.builtins import initialize_function
 
     from examples.seismic import AcquisitionGeometry, Model
     from examples.seismic.acoustic import AcousticWaveSolver
-    from seismagelib.data_structures import NDArrayStructIntf
-
 
     from pylops.waveeqprocessing._twoway import _CustomSource
-    from pylops.waveeqprocessing.twoway import _Wave
+    from seismagelib.waveeq_processing.twoway import _Wave
 else:
     AcousticWaveSolver = Any
 
-MPIComm = TypeVar("mpi4py.MPI.Comm")
 AcousticWaveSolverType = NewType("AcousticWaveSolver", AcousticWaveSolver)
 
 class _GenericAcousticWave(_Wave):
@@ -133,10 +122,6 @@ class _GenericAcousticWave(_Wave):
         src_y: NDArray = None,
         rec_y: NDArray = None,
         dt: int = None,
-        segy_path: str = None,
-        segy_mpi: MPIComm = None,
-        segy_sample: Union[int, float] = None,
-        mpi_instant_reduce: bool = False,
         dswap: bool = False,
         dswap_disks: int = 1,
         dswap_folder: str = None,
@@ -169,36 +154,9 @@ class _GenericAcousticWave(_Wave):
         self._create_geometry(
             src_x, src_y, src_z, rec_x, rec_y, rec_z, t0, tn, src_type, f0=f0
         )
+        # print(self.geometry.src_positions)
         self.checkpointing = checkpointing
         self.karguments = {}
-
-        if (segy_path):
-            if is_3d:
-                raise Exception("3D segy reader not available yet")
-
-            nshots, shot_ids = count_segy_shots(segy_path)
-            nsy = 1  # 2D
-
-            sample = segy_sample or nshots
-            if sample <= 0 or sample > nshots:
-                raise Exception("segy sample must be between (0," + str(nshots) + "]")
-            elif sample >= 1:
-                # Straight number of samples
-                sample = int(sample)
-            else:
-                # Percentage
-                sample = int(nshots * sample)
-
-            idxs = np.linspace(0, nshots - 1, num=sample, dtype=int)
-            sampled_sids = [shot_ids[i] for i in idxs]
-
-            if segy_mpi:
-                controller = MPIShotsController(shape, sample, nsy, nbl, segy_mpi, shot_ids=sampled_sids)
-                self.mpi_controller = controller
-
-            self.segyReader = ReadSEGY2D(segy_path, mpi=getattr(self, "mpi_controller", None), shot_ids=sampled_sids)
-
-        self.instant_reduce = mpi_instant_reduce
 
         self._dswap_opt = {
             "dswap": dswap,
@@ -435,51 +393,6 @@ class _GenericAcousticWave(_Wave):
     # def _bornadj_oneshot(self, solver: AcousticWaveSolverType, isrc, dobs):
     #     pass
 
-    # def _bornadj_allshots(self, dobs: NDArray) -> NDArray:
-        """Adjoint Born modelling for all shots
-
-        Parameters
-        ----------
-        dobs : :obj:`numpy.ndarray`
-            Observed data to inject
-
-        Returns
-        -------
-        model : :obj:`numpy.ndarray`
-            Model
-
-        """
-        # create geometry for single source
-        geometry = AcquisitionGeometry(
-            self.model,
-            self.geometry.rec_positions,
-            self.geometry.src_positions[0, :],
-            self.geometry.t0,
-            self.geometry.tn,
-            f0=self.geometry.f0,
-            src_type=self.geometry.src_type,
-        )
-
-        nsrc = self.geometry.src_positions.shape[0]
-        
-        mtot = np.zeros((len(self.parameter_names), *self.model.shape), dtype=self.dtype)
-
-        solver = self.solver_cls(self.model, geometry, space_order=self.space_order)
-
-        for isrc in range(nsrc):
-            solver.geometry.src_positions = self.geometry.src_positions[isrc, :]
-            m = self._bornadj_oneshot(solver, isrc, dobs[isrc])
-            for i, pname in enumerate(self.parameter_names):
-                mtot[i] += self._crop_model(m[pname].data, self.model.nbl)
-            del m
-            gc.collect()
-
-        controller = getattr(self, "mpi_controller", None)
-        if (controller and self.instant_reduce):
-            return controller.build_result([mtot])[0]
-        else:
-            return mtot
-
     def _fwd_oneshot(self, solver: AcousticWaveSolverType, params: NDArray) -> NDArray:
         """Forward modelling for one shot
 
@@ -565,15 +478,106 @@ class _GenericAcousticWave(_Wave):
             dtot.append(d)
         dtot = np.array(dtot).reshape(nsrc, d.shape[0], d.shape[1])
         return dtot
+
     
+    def _bornadj_oneshot(self, solver: AcousticWaveSolver, isrc, dobs):
+        """Adjoint born modelling for one shot
+
+        Parameters
+        ----------
+        solver : :obj:`AcousticWaveSolver`
+            Devito's solver object.
+        isrc : :obj:`float`
+            Index of source to model
+        dobs : :obj:`numpy.ndarray`
+            Observed data to inject
+
+        Returns
+        -------
+        model : :obj:`numpy.ndarray`
+            Model
+
+        """
+        # set disk_swap bool
+        dswap = self._dswap_opt.get("dswap", False)
+
+        # create boundary data
+        recs = self.geometry.rec.copy()
+        recs.data[:] = dobs.T[:]
+
+        # assign source location to source object with custom wavelet
+        if hasattr(self, "wav"):
+            self.wav.coordinates.data[0, :] = solver.geometry.src_positions[:]
+
+        # source wavefield
+        if hasattr(self, "src_wavefield"):
+            u0 = self.src_wavefield[isrc]
+        else:
+            u0 = solver.forward(
+                save=True if not dswap else False,
+                src=None if not hasattr(self, "wav") else self.wav,
+            )[1]
+
+        # adjoint modelling (reverse wavefield plus imaging condition)
+        grads = solver.gradient(
+            rec=recs, u=u0,
+        )[0]
+
+        return grads
+
+
+    def _bornadj_allshots(self, dobs: NDArray) -> NDArray:
+        """Adjoint Born modelling for all shots
+
+        Parameters
+        ----------
+        dobs : :obj:`numpy.ndarray`
+            Observed data to inject
+
+        Returns
+        -------
+        model : :obj:`numpy.ndarray`
+            Model
+
+        """
+        # create geometry for single source
+        geometry = AcquisitionGeometry(
+            self.model,
+            self.geometry.rec_positions,
+            self.geometry.src_positions[0, :],
+            self.geometry.t0,
+            self.geometry.tn,
+            f0=self.geometry.f0,
+            src_type=self.geometry.src_type,
+        )
+
+        solver = self.solver_cls(
+            self.model, geometry, space_order=self.space_order, **self._dswap_opt
+        )
+
+        nsrc = self.geometry.src_positions.shape[0]
+        mtot = np.zeros((len(self.parameter_names), *self.model.shape), dtype=self.dtype)
+
+        solver = self.solver_cls(self.model, geometry, space_order=self.space_order)
+
+        for isrc in range(nsrc):
+            solver.geometry.src_positions = self.geometry.src_positions[isrc, :]
+            m = self._bornadj_oneshot(solver, isrc, dobs[isrc])
+            for i, pname in enumerate(self.parameter_names):
+                mtot[i] += self._crop_model(m[pname].data, self.model.nbl)
+            del m
+            gc.collect()
+
+        return mtot
+        
 
     def _register_multiplications(self, op_name: str) -> None:
         if op_name == "born":
             self._acoustic_matvec = self._born_allshots
         if op_name == "fwd":
             self._acoustic_matvec = self._fwd_allshots
-        # self._acoustic_rmatvec = self._bornadj_allshots
-        self._acoustic_rmatvec = self._fwd_allshots
+        self._acoustic_rmatvec = self._bornadj_allshots
+        # self._acoustic_rmatvec = self._fwd_allshots
 
     @reshaped
     def _matvec(self, x: NDArray) -> NDArray:

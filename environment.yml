@@ -8,3 +8,4 @@ dependencies:
     - PyYAML
     - mpi4py
     - pytest
+    - matplotlib

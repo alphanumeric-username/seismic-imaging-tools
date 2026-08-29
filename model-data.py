@@ -7,10 +7,9 @@ from mpi4py import MPI
 import seismagelib.data_io as sio
 from seismagelib.wavesolver.acoustic import create_solver_class
 from seismagelib.waveeq_processing.generic_acoustic_twoway import GenericAcousticWave2D
+from seismagelib.distributed import RANK_MASTER, gen_shot_intervals, log, log_handle
 
 import time, datetime
-
-RANK_MASTER = 0
 
 def main(argv):
     wcomm = MPI.COMM_WORLD
@@ -116,28 +115,6 @@ def main(argv):
         print(f'{log_handle()}: Elapsed time: {datetime.timedelta(seconds=dt)}.')
 
     return 0
-
-
-def log_handle():
-    if MPI.COMM_WORLD.rank == RANK_MASTER:
-        return '[MASTER]'
-    else:
-        return f'[WORKER_{MPI.COMM_WORLD.rank}]'
-    
-
-def log(str):
-    print(f'{log_handle()}: {str}')
-
-
-def gen_shot_intervals(nshots: int, nworkers: int) -> List[Tuple[int, int]]:
-    max_jobs = min(nworkers, nshots)
-
-    intervals = []
-    indices = np.linspace(0, nshots, max_jobs+1, dtype=np.int32)
-    for i in range(1, max_jobs + 1):
-        intervals.append((int(indices[i-1]), int(indices[i])))
-
-    return max_jobs, intervals
 
 
 def gather_shots(wcomm: MPI.Intracomm, nsrc, isrc_min, isrc_max, dobs_local):
